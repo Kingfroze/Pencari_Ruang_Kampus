@@ -24,6 +24,39 @@
             to { opacity: 1; transform: translateY(0); }
         }
     </style>
+
+<style id="toastStyles-minimal">
+#toastContainer{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:9999;pointer-events:none}
+.toast{min-width:260px;max-width:360px;padding:12px 14px;border-radius:12px;background:#1f2937;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.2);display:grid;grid-template-columns:1fr auto;align-items:start;gap:8px 12px;pointer-events:auto;opacity:0;transform:translateY(-8px)}
+.toast__title{font-weight:700;font-size:14px;line-height:1.2}
+.toast__msg{grid-column:1 / -1;font-size:13px;opacity:.95}
+.toast__action,.toast__close{background:transparent;border:0;color:inherit;cursor:pointer;font-weight:600;padding:0}
+.toast__action{text-decoration:underline}
+.toast__close{opacity:.8}
+.toast__close:hover{opacity:1}
+.toast--success{background:#065f46}.toast--error{background:#7f1d1d}.toast--info{background:#1e3a8a}.toast--warning{background:#78350f}
+@keyframes toast-in{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toast-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-6px) scale(.98)}}
+.toast--enter{animation:toast-in .22s ease-out forwards}.toast--exit{animation:toast-out .18s ease-in forwards}
+</style>
+<div id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+
+
+<style id="auth-state-css">
+/* Saat logged-in, sembunyikan semua kontainer login umum */
+body.auth-logged-in #loginSection,
+body.auth-logged-in [data-role="login"],
+body.auth-logged-in .login-card,
+body.auth-logged-in .card:has(#loginForm) { display: none !important; }
+/* Tampilkan kandidat area aplikasi */
+body.auth-logged-in #dashboardSection,
+body.auth-logged-in [data-role="dashboard"],
+body.auth-logged-in #app,
+body.auth-logged-in #root,
+body.auth-logged-in main,
+body.auth-logged-in .content { display: block !important; }
+</style>
+
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen font-sans">
     <header class="bg-white shadow-lg border-b-4 border-blue-500">
@@ -1269,6 +1302,324 @@
             }
         }
     </script>
-</body>
 
+<script id="PRK-fix-pack">
+(function(){
+  function normID(v){ return String(v||'').trim().toLowerCase(); }
+  function validateEmailOrNIM(v){
+    var email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    var nim=/^\d{8,15}$/; // NIM 8–15 digit
+    return email.test(v) || nim.test(v);
+  }
+  function showToast(msg, opt){
+    opt=opt||{}; var type=opt.type||'info', title=opt.title||(type==='success'?'Berhasil':type==='error'?'Gagal':type==='warning'?'Perhatian':'Info');
+    var c=document.getElementById('toastContainer'); if(!c){ c=document.createElement('div'); c.id='toastContainer'; document.body.appendChild(c); }
+    var t=document.createElement('div'); t.className='toast toast--'+type+' toast--enter'; t.setAttribute('role','status');
+    var h=document.createElement('div'); h.className='toast__title'; h.textContent=title;
+    var x=document.createElement('button'); x.className='toast__close'; x.innerHTML='&times;';
+    x.onclick=function(){ t.classList.remove('toast--enter'); t.classList.add('toast--exit'); setTimeout(function(){ t.remove(); }, 180); };
+    var b=document.createElement('div'); b.className='toast__msg'; b.textContent=msg;
+    t.appendChild(h); t.appendChild(x); t.appendChild(b);
+    if (c.firstChild) c.insertBefore(t,c.firstChild); else c.appendChild(t);
+    setTimeout(function(){ try{x.click();}catch(e){} }, opt.duration||3500);
+  }
+  function getUsers(){ try{return JSON.parse(localStorage.getItem('registeredUsers')||'[]');}catch(_){return [];} }
+  function saveUsers(arr){ localStorage.setItem('registeredUsers', JSON.stringify(arr)); }
+  function setCurrentUser(u){ try{localStorage.setItem('currentUser', JSON.stringify(u));}catch(e){} }
+  function getCurrentUser(){ try{return JSON.parse(localStorage.getItem('currentUser')||'null');}catch(_){return null;} }
+  function clearCurrentUser(){ try{localStorage.removeItem('currentUser');}catch(_){} }
+
+  function show(el){ if(!el) return; el.style.removeProperty('display'); el.classList && el.classList.remove('hidden'); }
+  function hide(el){ if(!el) return; el.style.display='none'; el.classList && el.classList.add('hidden'); }
+
+  function showLoginView(){
+    var login = document.getElementById('loginSection') || document.querySelector('[data-role="login"]') || (document.getElementById('loginForm') && document.getElementById('loginForm').closest('section,div,form'));
+    var register = document.getElementById('registerSection') || document.querySelector('[data-role="register"]') || (document.getElementById('registerForm') && document.getElementById('registerForm').closest('section,div,form'));
+    var dashboard = document.getElementById('dashboardSection') || document.querySelector('[data-role="dashboard"]') || document.querySelector('main,.content,#app,#root');
+    if (login) show(login);
+    if (register) hide(register);
+    if (dashboard) hide(dashboard);
+    var userInfo = document.getElementById('userInfo') || document.querySelector('[data-role="user-info"]');
+    if (userInfo) hide(userInfo);
+  }
+
+  function showDashboardView(){
+    var login = document.getElementById('loginSection') || document.querySelector('[data-role="login"]') || (document.getElementById('loginForm') && document.getElementById('loginForm').closest('section,div,form'));
+    var register = document.getElementById('registerSection') || document.querySelector('[data-role="register"]') || (document.getElementById('registerForm') && document.getElementById('registerForm').closest('section,div,form'));
+    var dashboard = document.getElementById('dashboardSection') || document.querySelector('[data-role="dashboard"]');
+    if (!dashboard){
+      var candidate = document.querySelector('#searchRoomForm') || document.querySelector('#roomList') || document.querySelector('#myBookings') || document.querySelector('main,.content,#app,#root');
+      dashboard = candidate ? (candidate.closest('section,.card,.container,main,.content,#app,#root')||candidate) : null;
+    }
+    if (login) hide(login);
+    if (register) hide(register);
+    if (dashboard) show(dashboard);
+    var userInfo = document.getElementById('userInfo') || document.querySelector('[data-role="user-info"]');
+    if (userInfo) show(userInfo);
+  }
+
+  function findLoginForm(){
+    var f=document.getElementById('loginForm'); if(f) return f;
+    for (var i=0;i<document.forms.length;i++){
+      var fm=document.forms[i];
+      var hasEmail=fm.querySelector('#loginEmail,[name=loginEmail],[name=email],input[type=email]');
+      var hasPass=fm.querySelector('#loginPassword,[name=loginPassword],[name=password],input[type=password]');
+      if (hasEmail && hasPass) return fm;
+    }
+    var btn=[].slice.call(document.querySelectorAll('button,a,input')).find(el=>/masuk/i.test((el.textContent||el.value||'').trim()));
+    return btn?btn.closest('form'):null;
+  }
+  function findRegisterForm(){
+    var f=document.getElementById('registerForm'); if(f) return f;
+    for (var i=0;i<document.forms.length;i++){
+      var fm=document.forms[i];
+      var hasID=fm.querySelector('#registerEmail,[name=registerEmail],[name=email],input[type=email]');
+      var hasPass=fm.querySelector('#registerPassword,[name=registerPassword],[name=password],input[type=password]');
+      if (hasID && hasPass) return fm;
+    }
+    var btn=[].slice.call(document.querySelectorAll('button,a,input')).find(el=>/(daftar|buat akun)/i.test((el.textContent||el.value||'').trim()));
+    return btn?btn.closest('form'):null;
+  }
+  function ensureSubmitButton(form){
+    var btn=form.querySelector('[type=submit], button:not([type]), input[type=submit]');
+    if (!btn){ btn=document.createElement('button'); btn.type='submit'; btn.style.display='none'; form.appendChild(btn); }
+    else if (btn.tagName==='BUTTON' && !btn.hasAttribute('type')) btn.setAttribute('type','submit');
+    return btn;
+  }
+
+  function attachRegister(){
+    var form=findRegisterForm(); if(!form) return;
+    var clone=form.cloneNode(true); form.parentNode.replaceChild(clone, form);
+    clone.addEventListener('submit', function(e){
+      e.preventDefault();
+      var nameEl=clone.querySelector('#registerName,[name=registerName],[name=name]');
+      var idEl=clone.querySelector('#registerEmail,[name=registerEmail],[name=email],input[type=email],input[name=NIM],input[id=NIM]');
+      var passEl=clone.querySelector('#registerPassword,[name=registerPassword],[name=password],input[type=password]');
+      var roleEl=clone.querySelector('#registerRole,[name=registerRole],[name=role]');
+      var name=(nameEl && nameEl.value || '').trim();
+      var idv=normID(idEl && idEl.value || '');
+      var pwd=(passEl && passEl.value) || '';
+      var role=roleEl && roleEl.value || 'mahasiswa';
+      if (!validateEmailOrNIM(idv)){ showToast('Format email/NIM tidak valid! Gunakan email valid atau NIM 8–15 digit.', {type:'error'}); return; }
+      var users=getUsers();
+      if (users.some(u=>normID(u.email)===idv)){ showToast('Akun sudah terdaftar. Silakan masuk.', {type:'warning', title:'Sudah Terdaftar'}); showLoginView(); return; }
+      users.push({name:name, email:idv, password:pwd, role:role}); saveUsers(users);
+      // no auto-login
+      showLoginView();
+      showToast('Akun berhasil dibuat. Silakan login menggunakan email/NIM dan password.', {type:'success', title:'Pendaftaran Berhasil'});
+    });
+  }
+
+  function attachLogin(){
+    var form=findLoginForm(); if(!form) return;
+    ensureSubmitButton(form);
+    var clone=form.cloneNode(true); form.parentNode.replaceChild(clone, form);
+    clone.addEventListener('submit', function(e){
+      e.preventDefault();
+      var emailEl=clone.querySelector('#loginEmail,[name=loginEmail],[name=email],input[type=email]');
+      var passEl=clone.querySelector('#loginPassword,[name=loginPassword],[name=password],input[type=password]');
+      var idv=normID(emailEl?emailEl.value:''); var pwd=passEl?passEl.value:'';
+      if (!validateEmailOrNIM(idv)){ showToast('Format login tidak valid! Gunakan email atau NIM 8–15 digit.', {type:'error'}); return; }
+      var users=getUsers();
+      var u=users.find(x=>normID(x.email)===idv && x.password===pwd);
+      if (!u){ showToast('Email/NIM atau kata sandi salah, atau akun belum terdaftar.', {type:'error', title:'Login Gagal'}); return; }
+      var cu={ email:u.email, name:u.name || (idv.indexOf('@')>-1? idv.split('@')[0] : idv), role:u.role };
+      setCurrentUser(cu);
+      try{ var wn=document.getElementById('welcomeName'); if (wn) wn.textContent='Halo, '+cu.name; }catch(_){}
+      showDashboardView();
+      showToast('Selamat datang, '+cu.name+'!', {type:'success'});
+      if (typeof window.loadUserBookings==='function'){ try{ window.loadUserBookings(); }catch(_){ } }
+    });
+    Array.from(document.querySelectorAll('button,a')).forEach(function(el){
+      var t=(el.textContent||'').trim();
+      if (/^masuk$/i.test(t)){
+        el.addEventListener('click', function(ev){
+          var f=findLoginForm(); if (f){ ev.preventDefault(); f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', {cancelable:true})); }
+        });
+      }
+    });
+  }
+
+  function init(){
+    attachRegister();
+    attachLogin();
+    if (getCurrentUser()) showDashboardView();
+  }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+</script>
+
+
+<script id="register-fix-minimal">
+(function(){
+  function $(q){ return document.querySelector(q); }
+  function normID(v){ return String(v||'').trim().toLowerCase(); }
+  function showToastCompat(msg, type){
+    try { showToast(msg, {type: type||'info'}); } catch(_){ alert(msg); }
+  }
+  function validateEmailOrNIM(v){
+    var email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    var nim=/^\d{8,15}$/;
+    return email.test(v)||nim.test(v);
+  }
+  function getUsers(){ try{return JSON.parse(localStorage.getItem('registeredUsers')||'[]');}catch(_){return [];} }
+  function saveUsers(arr){ localStorage.setItem('registeredUsers', JSON.stringify(arr)); }
+
+  function gotoLogin(){
+    try { if (typeof window.showLogin === 'function'){ window.showLogin(); return; } } catch(e){}
+    var login = document.getElementById('loginSection') || document.querySelector('[data-role="login"]') || (document.getElementById('loginForm') && document.getElementById('loginForm').closest('section,div,form'));
+    var reg   = document.getElementById('registerSection') || document.querySelector('[data-role="register"]') || (document.getElementById('registerForm') && document.getElementById('registerForm').closest('section,div,form'));
+    if (login) login.style.display='';
+    if (reg) reg.style.display='none';
+  }
+
+  var form = document.getElementById('registerForm') || (function(){
+    for (var i=0;i<document.forms.length;i++){
+      var f=document.forms[i];
+      if (f.querySelector('#registerEmail,[name=registerEmail],[name=email],input[type=email]') &&
+          f.querySelector('#registerPassword,[name=registerPassword],[name=password],input[type=password]')) return f;
+    }
+    return null;
+  })();
+
+  if (!form) return;
+  if (form.__prkRegisterFixed) return; form.__prkRegisterFixed = true;
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var nameEl = form.querySelector('#registerName,[name=registerName],[name=name]');
+    var idEl   = form.querySelector('#registerEmail,[name=registerEmail],[name=email],input[type=email],input[name=NIM],input[id=NIM]');
+    var passEl = form.querySelector('#registerPassword,[name=registerPassword],[name=password],input[type=password]');
+    var roleEl = form.querySelector('#registerRole,[name=registerRole],[name=role]');
+
+    var name = (nameEl && nameEl.value || '').trim();
+    var idv  = normID(idEl && idEl.value || '');
+    var pwd  = passEl && passEl.value || '';
+    var role = roleEl && roleEl.value || 'mahasiswa';
+
+    if (!validateEmailOrNIM(idv)){
+      showToastCompat('Format email/NIM tidak valid (NIM 8–15 digit).','error'); return;
+    }
+    if (!name || !pwd){
+      showToastCompat('Nama dan kata sandi wajib diisi.','warning'); return;
+    }
+
+    var users = getUsers();
+    if (users.some(function(u){ return normID(u.email)===idv; })){
+      showToastCompat('Akun sudah terdaftar. Silakan login.','warning');
+      gotoLogin();
+      return;
+    }
+    users.push({name:name, email:idv, password:pwd, role:role});
+    saveUsers(users);
+
+    showToastCompat('Akun berhasil dibuat. Silakan login.','success');
+    gotoLogin();
+  }, false);
+})();
+</script>
+
+
+<script id="login-switch-bridge">
+(function(){
+  // Non-intrusive bridge: setelah login sukses, paksa pindah ke tampilan aplikasi.
+  function $(q){ return document.querySelector(q); }
+  function show(el){ if(el){ el.style.removeProperty('display'); el.classList && el.classList.remove('hidden'); } }
+  function hide(el){ if(el){ el.style.display='none'; el.classList && el.classList.add('hidden'); } }
+  function getSession(){ try{ return JSON.parse(localStorage.getItem('currentUser')||'null'); }catch(_){ return null; } }
+  function applyAuthState(){
+    var u = getSession();
+    // Gunakan fungsi bawaan bila ada
+    if (u && typeof window.showDashboard === 'function'){ try{ window.showDashboard(); return true; }catch(e){} }
+    if (!u && typeof window.showLogin === 'function'){ try{ window.showLogin(); return true; }catch(e){} }
+    // Fallback
+    var login = document.getElementById('loginSection') || document.querySelector('[data-role="login"]') || (document.getElementById('loginForm') && document.getElementById('loginForm').closest('section,div,form'));
+    var register = document.getElementById('registerSection') || document.querySelector('[data-role="register"]') || (document.getElementById('registerForm') && document.getElementById('registerForm').closest('section,div,form'));
+    var dashboard = document.getElementById('dashboardSection') || document.querySelector('[data-role="dashboard"]') || document.querySelector('main,.content,#app,#root');
+    if (u){
+      hide(login); hide(register); show(dashboard);
+      var ui = document.getElementById('userInfo') || document.querySelector('[data-role="user-info"]'); show(ui);
+    } else {
+      show(login); hide(register); if (dashboard) hide(dashboard);
+      var ui2 = document.getElementById('userInfo') || document.querySelector('[data-role="user-info"]'); hide(ui2);
+    }
+    return !!u;
+  }
+
+  function onAfterSubmit(){
+    // cek beberapa kali dengan jeda kecil (tanpa override apapun)
+    var tries = 0;
+    var t = setInterval(function(){
+      tries++;
+      var ok = applyAuthState();
+      if (ok || tries >= 10){ clearInterval(t); }
+    }, 50);
+  }
+
+  // Bind ke form login bila ada
+  var lf = document.getElementById('loginForm') || (function(){
+    for (var i=0;i<document.forms.length;i++){
+      var f=document.forms[i];
+      if (f.querySelector('#loginPassword,[name=loginPassword],[name=password],input[type=password]')) return f;
+    }
+    return null;
+  })();
+  if (lf && !lf.__switchBridged){
+    lf.__switchBridged = true;
+    lf.addEventListener('submit', function(){ setTimeout(onAfterSubmit, 0); }, false);
+  }
+
+  // Bind tombol/anchor bertuliskan "Masuk"
+  Array.from(document.querySelectorAll('button,a,input[type=button]')).forEach(function(el){
+    var t = (el.textContent||el.value||'').trim();
+    if (/^masuk$/i.test(t) && !el.__switchBridged){
+      el.__switchBridged = true;
+      el.addEventListener('click', function(){ setTimeout(onAfterSubmit, 0); }, false);
+    }
+  });
+
+  // Auto-apply saat halaman dimuat (restore session)
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(applyAuthState, 0); });
+})();
+</script>
+
+
+<script id="auth-state-toggle">
+(function(){
+  function hasSession(){ try{ return !!JSON.parse(localStorage.getItem('currentUser')||'null'); }catch(_){ return false; } }
+  function apply(){
+    if (hasSession()) document.body.classList.add('auth-logged-in');
+    else document.body.classList.remove('auth-logged-in');
+    // Minimal JS show/hide untuk beberapa id populer
+    if (hasSession()){
+      var dash = document.getElementById('dashboardSection') || document.querySelector('[data-role="dashboard"]') || document.querySelector('main,.content,#app,#root');
+      if (dash) { dash.style.removeProperty('display'); dash.classList.remove('hidden'); }
+    } else {
+      var login = document.getElementById('loginSection') || document.querySelector('[data-role="login"]') || (document.getElementById('loginForm') && document.getElementById('loginForm').closest('section,div,form'));
+      if (login) { login.style.removeProperty('display'); login.classList.remove('hidden'); }
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    apply();
+    // sinkron ketika ada perubahan storage dari tab yang sama
+    window.addEventListener('storage', function(){ apply(); });
+    // polling ringan 500ms selama 3s setelah submit login
+    var lf = document.getElementById('loginForm');
+    if (lf && !lf.__authCssBound){
+      lf.__authCssBound = true;
+      lf.addEventListener('submit', function(){
+        var start = Date.now();
+        var t = setInterval(function(){
+          apply();
+          if (Date.now()-start > 3000 || document.body.classList.contains('auth-logged-in')) clearInterval(t);
+        }, 150);
+      }, false);
+    }
+    // juga cek tiap 1s selama penggunaan
+    setInterval(apply, 1000);
+  });
+})();
+</script>
+
+</body>
 </html>
